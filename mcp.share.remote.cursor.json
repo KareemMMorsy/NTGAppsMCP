@@ -1,0 +1,24 @@
+{
+  "mcpServers": {
+    "NTGApps": {
+      "command": "powershell.exe",
+      "args": [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "scripts/mcp-http-bridge.ps1"
+      ],
+      "env": {
+        "MCP_REMOTE_MCP_URL": "https://ntgapps-divine-dawn-9591.fly.dev/mcp",
+        "MCP_HTTP_AUTH_TOKEN": "<MCP_HTTP_AUTH_TOKEN>",
+        "MCP_DEFAULT_SESSION_TOKEN": "<SMART2GO_USERSESSIONTOKEN>"
+      }
+    }
+  }
+}
+
+
+
+
+

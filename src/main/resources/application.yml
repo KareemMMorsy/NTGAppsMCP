@@ -1,0 +1,43 @@
+mcp:
+  stdio:
+    enabled: ${MCP_STDIO_MODE:false}
+  default-client-id: ${MCP_DEFAULT_CLIENT_ID:}
+  default-session-token: ${MCP_DEFAULT_SESSION_TOKEN:}
+  import:
+    apps-dir: ${MCP_IMPORT_APPS_DIR:storage/import-apps}
+  http:
+    auth-token: ${MCP_HTTP_AUTH_TOKEN:}
+  auth:
+    base-url: ${MCP_AUTH_BASE_URL:http://localhost:7070/Smart2Go}
+    integration-enabled: ${MCP_AUTH_INTEGRATION_ENABLED:false}
+  apps:
+    base-url: ${MCP_APPS_BASE_URL:http://localhost:7070/Smart2Go}
+    integration-enabled: ${MCP_APPS_INTEGRATION_ENABLED:false}
+  file:
+    allowed-roots: ${MCP_FILE_ALLOWED_ROOTS:}
+  log:
+    to-file: ${MCP_LOG_TO_FILE:true}
+    file-path: ${MCP_LOG_FILE_PATH:logs/mcp.jsonl}
+
+spring:
+  application:
+    name: ntg-apps-broker-mcp
+  main:
+    banner-mode: off
+    web-application-type: none
+
+server:
+  address: 0.0.0.0
+  port: ${PORT:8080}
+
+logging:
+  level:
+    root: INFO
+    com.ntg.appsbroker: DEBUG
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} - %msg%n"
+  file:
+    name: ${mcp.log.file-path}
+    max-size: 10MB
+    max-history: 10
+
