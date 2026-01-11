@@ -5,7 +5,6 @@ import com.ntg.appsbroker.ports.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.core.env.Environment;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
@@ -33,20 +32,17 @@ public class HandleMcpRequestUseCase {
     private final AppsService appsService;
     private final SessionStore sessionStore;
     private final String importAppsDir;
-    private final Environment env;
     
     public HandleMcpRequestUseCase(
         AuthService authService,
         AppsService appsService,
         SessionStore sessionStore,
-        @Value("${mcp.import.apps-dir:storage/import-apps}") String importAppsDir,
-        Environment env
+        @Value("${mcp.import.apps-dir:storage/import-apps}") String importAppsDir
     ) {
         this.authService = authService;
         this.appsService = appsService;
         this.sessionStore = sessionStore;
         this.importAppsDir = importAppsDir;
-        this.env = env;
     }
     
     public McpOutcome execute(McpRequestData request, String clientId) {
@@ -55,7 +51,6 @@ public class HandleMcpRequestUseCase {
         // Session enforcement for protected actions
         if (!request.action().equals("ping") && 
             !request.action().equals("login") &&
-            !request.action().equals("server_info") &&
             !request.action().equals("ai.intent")) {
             
             // Allow callers to pass sessionToken explicitly (e.g., from Cursor env),
@@ -89,7 +84,6 @@ public class HandleMcpRequestUseCase {
         return switch (request.action()) {
             case "ping" -> handlePing(request);
             case "login" -> handleLogin(request, clientId);
-            case "server_info" -> handleServerInfo(request);
             case "create_app" -> handleCreateApp(request);
             case "import_app" -> handleImportApp(request);
             default -> new McpFailure(
@@ -102,61 +96,6 @@ public class HandleMcpRequestUseCase {
     
     private McpOutcome handlePing(McpRequestData request) {
         return new McpSuccess(request.requestId(), Map.of("message", "pong"));
-    }
-
-    private McpOutcome handleServerInfo(McpRequestData request) {
-        Map<String, Object> props = Map.of(
-            "mcp.auth.base-url", env.getProperty("mcp.auth.base-url", ""),
-            "mcp.apps.base-url", env.getProperty("mcp.apps.base-url", ""),
-            "mcp.import.apps-dir", env.getProperty("mcp.import.apps-dir", ""),
-            "server.port", env.getProperty("server.port", ""),
-            "server.address", env.getProperty("server.address", "")
-        );
-
-        Map<String, Object> envVars = Map.of(
-            "PORT", safeEnv("PORT"),
-            "MCP_HTTP_SSE_MODE", safeEnv("MCP_HTTP_SSE_MODE"),
-            "MCP_STDIO_MODE", safeEnv("MCP_STDIO_MODE"),
-            "MCP_AUTH_BASE_URL", safeEnv("MCP_AUTH_BASE_URL"),
-            "MCP_APPS_BASE_URL", safeEnv("MCP_APPS_BASE_URL"),
-            "MCP_IMPORT_APPS_DIR", safeEnv("MCP_IMPORT_APPS_DIR"),
-            "RAILWAY_ENVIRONMENT", safeEnv("RAILWAY_ENVIRONMENT"),
-            "RAILWAY_GIT_COMMIT_SHA", safeEnv("RAILWAY_GIT_COMMIT_SHA"),
-            "RAILWAY_SERVICE_NAME", safeEnv("RAILWAY_SERVICE_NAME")
-        );
-
-        Map<String, Object> secrets = Map.of(
-            "MCP_HTTP_AUTH_TOKEN", secretPresence("MCP_HTTP_AUTH_TOKEN"),
-            "MCP_DEFAULT_SESSION_TOKEN", secretPresence("MCP_DEFAULT_SESSION_TOKEN")
-        );
-
-        Map<String, Object> sys = Map.of(
-            "java.version", System.getProperty("java.version", ""),
-            "os.name", System.getProperty("os.name", ""),
-            "os.arch", System.getProperty("os.arch", "")
-        );
-
-        return new McpSuccess(request.requestId(), Map.of(
-            "properties", props,
-            "env", envVars,
-            "secrets", secrets,
-            "system", sys
-        ));
-    }
-
-    private static Map<String, Object> secretPresence(String key) {
-        String v = System.getenv(key);
-        if (v == null || v.isBlank()) {
-            return Map.of("configured", false, "length", 0);
-        }
-        return Map.of("configured", true, "length", v.length());
-    }
-
-    private static String safeEnv(String key) {
-        // Safe values only (no tokens/passwords). If a value looks like a token, we still return it as-is only
-        // for explicitly whitelisted keys in handleServerInfo().
-        String v = System.getenv(key);
-        return v == null ? "" : v;
     }
     
     private McpOutcome handleLogin(McpRequestData request, String clientId) {
@@ -307,6 +246,7 @@ public class HandleMcpRequestUseCase {
 
         String requestedNewAppIdentifier = (String) params.get("newAppIdentifier");
         String requestedNewAppName = (String) params.get("newAppName");
+        boolean debug = Boolean.TRUE.equals(params.get("debug"));
 
         Path selectedFile;
         try {
@@ -407,15 +347,51 @@ public class HandleMcpRequestUseCase {
                 );
             }
 
-            return new McpSuccess(
-                request.requestId(),
-                Map.of(
-                    "selectedFile", selectedFile.toString(),
+            // Return a clean summary by default (avoid dumping large upstream payloads like integrationRepositories).
+            Map<String, Object> uploadSummary = Map.of(
+                "appName", asString(uploadBody.get("appName")),
+                "appIdentifier", asString(uploadBody.get("appIdentifier")),
+                "appUuid", asString(uploadBody.get("appUuid")),
+                "version", asString(uploadBody.get("version"))
+            );
+
+            Map<String, Object> validateSummary = Map.of(
+                "isValid", validateBody.get("isValid"),
+                "existAppName", validateBody.get("existAppName"),
+                "allowMerge", validateBody.get("allowMerge")
+            );
+
+            Map<String, Object> importBody = asMap(importResp.body());
+            Map<String, Object> importSummary = importBody.isEmpty()
+                ? Map.of("body", importResp.body() != null ? importResp.body() : Map.of())
+                : Map.of("returnValue", importBody.get("returnValue"));
+
+            Map<String, Object> baseResult = new HashMap<>();
+            baseResult.put("message", exists ? "imported_with_conflict_resolution" : "imported");
+            baseResult.put("selectedFile", selectedFile.toString());
+            baseResult.put("uploaded", uploadSummary);
+            baseResult.put("validate", validateSummary);
+            baseResult.put("import", importSummary);
+            baseResult.put("conflictResolution", conflictResolution);
+
+            if (exists) {
+                baseResult.put("importedAs", Map.of(
+                    "newAppName", importPayload.getOrDefault("newAppName", ""),
+                    "newAppIdentifier", importPayload.getOrDefault("newAppIdentifier", "")
+                ));
+            }
+
+            if (debug) {
+                baseResult.put("debugUpstream", Map.of(
                     "uploadFile", Map.of("status_code", uploadResp.statusCode(), "body", uploadBody),
                     "validateAppIdentifier", Map.of("status_code", validateResp.statusCode(), "body", validateBody),
-                    "importApp", Map.of("status_code", importResp.statusCode(), "body", importResp.body()),
-                    "conflictResolution", conflictResolution
-                )
+                    "importApp", Map.of("status_code", importResp.statusCode(), "body", importResp.body())
+                ));
+            }
+
+            return new McpSuccess(
+                request.requestId(),
+                baseResult
             );
         } catch (Exception e) {
             log.error("Failed to import app", e);

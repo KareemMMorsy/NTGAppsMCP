@@ -194,7 +194,9 @@ public class McpHttpJsonRpcController {
                         "newAppIdentifier", Map.of("type", "string", "description",
                             "Optional. Used only if the app already exists. New 3-letter identifier to import under."),
                         "newAppName", Map.of("type", "string", "description",
-                            "Optional. Used only if the app already exists. New app name to import under.")
+                            "Optional. Used only if the app already exists. New app name to import under."),
+                        "debug", Map.of("type", "boolean", "description",
+                            "Optional. If true, include full upstream API payloads for debugging. Default: false.")
                     ),
                     "required", List.of("appName"),
                     "additionalProperties", false
