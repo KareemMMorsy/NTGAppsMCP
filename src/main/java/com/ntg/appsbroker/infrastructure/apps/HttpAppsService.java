@@ -5,7 +5,7 @@ import com.ntg.appsbroker.ports.AppsService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.core.io.FileSystemResource;
+import org.springframework.core.io.ByteArrayResource;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
@@ -19,6 +19,8 @@ import reactor.util.retry.Retry;
 import com.ntg.appsbroker.infrastructure.util.BaseUrlUtil;
 
 import java.time.Duration;
+import java.time.OffsetDateTime;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
 
@@ -100,19 +102,58 @@ public class HttpAppsService implements AppsService {
         log.debug("Uploading import file: {}, sessionToken: {}", file != null ? file.toString() : "null", sessionToken != null ? "***" : "null");
 
         try {
+            if (file == null) {
+                return new AppsResponse(400, Map.of("error", "file is required"));
+            }
+            if (!Files.exists(file) || !Files.isRegularFile(file)) {
+                return new AppsResponse(404, Map.of("error", "File not found: " + file));
+            }
+
+            // Match Python script behavior: enforce .NTGapps extension only (case-insensitive).
+            String filename = file.getFileName() != null ? file.getFileName().toString() : "";
+            if (!filename.toLowerCase().endsWith(".ntgapps")) {
+                return new AppsResponse(400, Map.of("error", "Only .NTGapps files are supported.", "file", filename));
+            }
+
+            long fileSize = Files.size(file);
+            if (fileSize <= 0) {
+                return new AppsResponse(400, Map.of("error", "File is empty", "file", filename));
+            }
+
+            // Match Python script: read fully into memory and upload as raw bytes (octet-stream) inside multipart.
+            byte[] bytes = Files.readAllBytes(file);
+            if (bytes.length != fileSize) {
+                return new AppsResponse(400, Map.of(
+                    "error", "File read incomplete",
+                    "expectedBytes", fileSize,
+                    "actualBytes", bytes.length,
+                    "file", filename
+                ));
+            }
+
+            ByteArrayResource fileResource = new ByteArrayResource(bytes) {
+                @Override
+                public String getFilename() {
+                    return filename;
+                }
+            };
+
             MultipartBodyBuilder builder = new MultipartBodyBuilder();
-            builder.part("file", new FileSystemResource(file.toFile()));
+            builder.part("file", fileResource)
+                .filename(filename)
+                .contentType(MediaType.APPLICATION_OCTET_STREAM);
 
             var response = client.post()
                 .uri("/rest/importExport/uploadFile")
-                .headers(h -> applySessionHeaders(h, sessionToken))
+                .headers(h -> applyUploadHeaders(h, sessionToken))
                 .contentType(MediaType.MULTIPART_FORM_DATA)
                 .body(BodyInserters.fromMultipartData(builder.build()))
                 .retrieve()
                 .bodyToMono(Object.class)
                 .retryWhen(Retry.backoff(2, Duration.ofSeconds(1))
                     .filter(t -> t instanceof java.net.ConnectException || t instanceof WebClientRequestException))
-                .timeout(Duration.ofSeconds(30))
+                // Match Python script behavior: allow large files (10 minutes).
+                .timeout(Duration.ofSeconds(600))
                 .block();
 
             return new AppsResponse(200, response);
@@ -213,6 +254,23 @@ public class HttpAppsService implements AppsService {
         headers.set("SessionToken", sessionToken);
         headers.set("sessiontoken", sessionToken);
         headers.set("X-Session-Token", sessionToken);
+    }
+
+    /**
+     * Match the Python upload script headers:
+     * - SessionToken (we also send sessiontoken + X-Session-Token)
+     * - TimeOffset (ms)
+     * - ngsw-bypass=true
+     */
+    private static void applyUploadHeaders(HttpHeaders headers, String sessionToken) {
+        applySessionHeaders(headers, sessionToken);
+        headers.set("TimeOffset", String.valueOf(timeOffsetMs()));
+        headers.set("ngsw-bypass", "true");
+    }
+
+    private static long timeOffsetMs() {
+        // Python: datetime.now().astimezone().utcoffset().total_seconds() * 1000
+        return (long) OffsetDateTime.now().getOffset().getTotalSeconds() * 1000L;
     }
 }
 
