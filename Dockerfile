@@ -7,8 +7,8 @@ RUN mvn -DskipTests clean package
 FROM eclipse-temurin:17-jre-jammy
 WORKDIR /app
 COPY --from=build /app/target/apps-broker-mcp-*.jar /app/mcp-server.jar
-COPY apps /app/apps
-RUN chmod 644 /app/mcp-server.jar && ls -lah /app && test -f /app/mcp-server.jar
+COPY Apps/ /app/apps/
+RUN chmod 644 /app/mcp-server.jar && ls -lah /app && ls -lah /app/apps && test -f /app/mcp-server.jar
 EXPOSE 8080
 ENV PORT=8080
 ENV MCP_HTTP_SSE_MODE=true
