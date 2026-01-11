@@ -22,14 +22,11 @@ public class HttpAuthService implements AuthService {
     private static final Logger log = LoggerFactory.getLogger(HttpAuthService.class);
     private final WebClient webClient;
     private final String baseUrl;
-    private final boolean enabled;
     
     public HttpAuthService(
-        @Value("${mcp.auth.base-url:http://localhost:7070/Smart2Go}") String baseUrl,
-        @Value("${mcp.auth.integration-enabled:false}") boolean enabled
+        @Value("${mcp.auth.base-url:http://localhost:7070/Smart2Go}") String baseUrl
     ) {
         this.baseUrl = BaseUrlUtil.normalize(baseUrl);
-        this.enabled = enabled;
         this.webClient = WebClient.builder()
             .baseUrl(this.baseUrl)
             .defaultHeader("SessionToken", "NTG")
@@ -39,16 +36,6 @@ public class HttpAuthService implements AuthService {
     
     @Override
     public LoginResult login(String username, String password, String companyname) {
-        if (!enabled) {
-            // Returning a dummy token causes confusing downstream errors (e.g., "Invalid License").
-            // Fail fast with a clear message so operators know to set the correct env vars on the server.
-            throw new IllegalStateException(
-                "Auth integration is disabled on this MCP server. " +
-                    "Set MCP_AUTH_INTEGRATION_ENABLED=true (and MCP_AUTH_BASE_URL) on the server, " +
-                    "or provide a valid Smart2Go sessionToken via MCP_DEFAULT_SESSION_TOKEN / tool argument."
-            );
-        }
-        
         Map<String, Object> payload = new HashMap<>();
         Map<String, Object> loginUserInfo = new HashMap<>();
         loginUserInfo.put("loginUserName", username);

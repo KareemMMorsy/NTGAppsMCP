@@ -29,14 +29,11 @@ public class HttpAppsService implements AppsService {
     private static final Logger log = LoggerFactory.getLogger(HttpAppsService.class);
     private final WebClient webClient;
     private final String baseUrl;
-    private final boolean enabled;
     
     public HttpAppsService(
-        @Value("${mcp.apps.base-url:http://localhost:7070/Smart2Go}") String baseUrl,
-        @Value("${mcp.apps.integration-enabled:false}") boolean enabled
+        @Value("${mcp.apps.base-url:http://localhost:7070/Smart2Go}") String baseUrl
     ) {
         this.baseUrl = BaseUrlUtil.normalize(baseUrl);
-        this.enabled = enabled;
         // Bump in-memory buffer in case uploadFile returns larger payloads (integrationRepositories etc.)
         var strategies = ExchangeStrategies.builder()
             .codecs(c -> c.defaultCodecs().maxInMemorySize(10 * 1024 * 1024))
@@ -50,11 +47,6 @@ public class HttpAppsService implements AppsService {
     
     @Override
     public AppsResponse saveApp(Map<String, Object> spec, String sessionToken) {
-        if (!enabled) {
-            log.warn("Apps integration disabled, returning dummy response");
-            return new AppsResponse(200, Map.of("message", "dummy response"));
-        }
-        
         log.info("Calling saveApp API: {}", baseUrl + "/rest/Apps/saveApp");
         log.debug("App spec: {}, sessionToken: {}", spec, sessionToken != null ? "***" : "null");
         
@@ -92,11 +84,6 @@ public class HttpAppsService implements AppsService {
 
     @Override
     public AppsResponse uploadImportFile(Path file, String sessionToken) {
-        if (!enabled) {
-            log.warn("Apps integration disabled, cannot upload import file");
-            return new AppsResponse(503, Map.of("error", "Apps integration disabled"));
-        }
-
         log.info("Calling uploadFile API: {}", baseUrl + "/rest/importExport/uploadFile");
         log.debug("Uploading import file: {}, sessionToken: {}", file != null ? file.toString() : "null", sessionToken != null ? "***" : "null");
 
@@ -135,11 +122,6 @@ public class HttpAppsService implements AppsService {
 
     @Override
     public AppsResponse validateAppIdentifier(Map<String, Object> payload, String sessionToken) {
-        if (!enabled) {
-            log.warn("Apps integration disabled, cannot validate app identifier");
-            return new AppsResponse(503, Map.of("error", "Apps integration disabled"));
-        }
-
         log.info("Calling validateAppIdentifier API: {}", baseUrl + "/rest/importExport/validateAppIdentifier");
 
         try {
@@ -174,11 +156,6 @@ public class HttpAppsService implements AppsService {
 
     @Override
     public AppsResponse importApp(Map<String, Object> payload, String sessionToken) {
-        if (!enabled) {
-            log.warn("Apps integration disabled, cannot import app");
-            return new AppsResponse(503, Map.of("error", "Apps integration disabled"));
-        }
-
         log.info("Calling importApp API: {}", baseUrl + "/rest/importExport/importApp");
 
         try {

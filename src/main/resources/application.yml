@@ -9,10 +9,10 @@ mcp:
     auth-token: ${MCP_HTTP_AUTH_TOKEN:}
   auth:
     base-url: ${MCP_AUTH_BASE_URL:http://localhost:7070/Smart2Go}
-    integration-enabled: ${MCP_AUTH_INTEGRATION_ENABLED:false}
+    integration-enabled: ${MCP_AUTH_INTEGRATION_ENABLED:true}
   apps:
     base-url: ${MCP_APPS_BASE_URL:http://localhost:7070/Smart2Go}
-    integration-enabled: ${MCP_APPS_INTEGRATION_ENABLED:false}
+    integration-enabled: ${MCP_APPS_INTEGRATION_ENABLED:true}
   file:
     allowed-roots: ${MCP_FILE_ALLOWED_ROOTS:}
   log:
