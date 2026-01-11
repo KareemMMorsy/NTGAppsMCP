@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ntg.appsbroker.domain.McpFailure;
 import com.ntg.appsbroker.domain.McpRequestData;
 import com.ntg.appsbroker.domain.McpSuccess;
+import com.ntg.appsbroker.infrastructure.context.UpstreamBaseUrlContext;
 import com.ntg.appsbroker.usecases.HandleMcpRequestUseCase;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -35,15 +36,18 @@ public class McpHttpJsonRpcController {
     private final HandleMcpRequestUseCase useCase;
     private final ObjectMapper objectMapper;
     private final String httpAuthToken;
+    private final UpstreamBaseUrlContext upstreamBaseUrlContext;
 
     public McpHttpJsonRpcController(
         HandleMcpRequestUseCase useCase,
         ObjectMapper objectMapper,
-        @Value("${mcp.http.auth-token:}") String httpAuthToken
+        @Value("${mcp.http.auth-token:}") String httpAuthToken,
+        UpstreamBaseUrlContext upstreamBaseUrlContext
     ) {
         this.useCase = useCase;
         this.objectMapper = objectMapper;
         this.httpAuthToken = httpAuthToken;
+        this.upstreamBaseUrlContext = upstreamBaseUrlContext;
     }
 
     @PostMapping(path = "/mcp", consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
@@ -94,25 +98,35 @@ public class McpHttpJsonRpcController {
 
         String clientId = (String) arguments.get("clientId");
 
-        var request = new McpRequestData(UUID.randomUUID(), name, arguments);
-        var outcome = useCase.execute(request, clientId);
+        // Allow per-request upstream base-url override (typically injected by the local bridge).
+        String authBaseUrl = (String) arguments.get("authBaseUrl");
+        String appsBaseUrl = (String) arguments.get("appsBaseUrl");
 
-        Map<String, Object> content;
-        if (outcome instanceof McpSuccess success) {
-            String jsonText = objectMapper.writeValueAsString(success.result());
-            content = Map.of("type", "text", "text", jsonText);
-        } else {
-            var failure = (McpFailure) outcome;
-            Map<String, Object> errorObj = Map.of(
-                "code", failure.error().code(),
-                "message", failure.error().message(),
-                "details", failure.error().details() != null ? failure.error().details() : Map.of()
-            );
-            String jsonText = objectMapper.writeValueAsString(errorObj);
-            content = Map.of("type", "text", "text", jsonText);
+        try {
+            upstreamBaseUrlContext.set(authBaseUrl, appsBaseUrl);
+
+            var request = new McpRequestData(UUID.randomUUID(), name, arguments);
+            var outcome = useCase.execute(request, clientId);
+
+            Map<String, Object> content;
+            if (outcome instanceof McpSuccess success) {
+                String jsonText = objectMapper.writeValueAsString(success.result());
+                content = Map.of("type", "text", "text", jsonText);
+            } else {
+                var failure = (McpFailure) outcome;
+                Map<String, Object> errorObj = Map.of(
+                    "code", failure.error().code(),
+                    "message", failure.error().message(),
+                    "details", failure.error().details() != null ? failure.error().details() : Map.of()
+                );
+                String jsonText = objectMapper.writeValueAsString(errorObj);
+                content = Map.of("type", "text", "text", jsonText);
+            }
+
+            return jsonRpcResult(id, Map.of("content", List.of(content)));
+        } finally {
+            upstreamBaseUrlContext.clear();
         }
-
-        return jsonRpcResult(id, Map.of("content", List.of(content)));
     }
 
     private List<Map<String, Object>> toolList() {
@@ -135,18 +149,11 @@ public class McpHttpJsonRpcController {
                         "username", Map.of("type", "string"),
                         "password", Map.of("type", "string"),
                         "companyname", Map.of("type", "string"),
-                        "clientId", Map.of("type", "string")
+                        "clientId", Map.of("type", "string"),
+                        "authBaseUrl", Map.of("type", "string", "description", "Optional. Override upstream Auth base URL (bridge-injected)."),
+                        "appsBaseUrl", Map.of("type", "string", "description", "Optional. Override upstream Apps base URL (bridge-injected).")
                     ),
                     "required", List.of("username", "password", "companyname", "clientId"),
-                    "additionalProperties", false
-                )
-            ),
-            Map.of(
-                "name", "server_info",
-                "description", "Returns sanitized server runtime env/config to debug deployments (never returns secrets).",
-                "inputSchema", Map.of(
-                    "type", "object",
-                    "properties", Map.of(),
                     "additionalProperties", false
                 )
             ),
@@ -159,6 +166,8 @@ public class McpHttpJsonRpcController {
                         "clientId", Map.of("type", "string"),
                         "sessionToken", Map.of("type", "string", "description",
                             "Optional. If provided, bypasses stored login session and uses this token for the call."),
+                        "authBaseUrl", Map.of("type", "string", "description", "Optional. Override upstream Auth base URL (bridge-injected)."),
+                        "appsBaseUrl", Map.of("type", "string", "description", "Optional. Override upstream Apps base URL (bridge-injected)."),
                         "AppearOnMobile", Map.of("type", "boolean", "description", "Optional. Default: true"),
                         "appName", Map.of("type", "string", "description", "Required. App display name."),
                         "appIdentifier", Map.of("type", "string", "description", "Optional. Default: derived 3-letter code from appName."),
@@ -178,6 +187,8 @@ public class McpHttpJsonRpcController {
                         "clientId", Map.of("type", "string"),
                         "sessionToken", Map.of("type", "string", "description",
                             "Optional. If provided, bypasses stored login session and uses this token for the call."),
+                        "authBaseUrl", Map.of("type", "string", "description", "Optional. Override upstream Auth base URL (bridge-injected)."),
+                        "appsBaseUrl", Map.of("type", "string", "description", "Optional. Override upstream Apps base URL (bridge-injected)."),
                         "appName", Map.of("type", "string", "description",
                             "Required. App name (folder name under MCP_IMPORT_APPS_DIR). Server chooses the newest file in that folder."),
                         "newAppIdentifier", Map.of("type", "string", "description",

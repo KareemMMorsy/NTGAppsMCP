@@ -1,5 +1,6 @@
 package com.ntg.appsbroker.infrastructure.apps;
 
+import com.ntg.appsbroker.infrastructure.context.UpstreamBaseUrlContext;
 import com.ntg.appsbroker.ports.AppsService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -29,11 +30,14 @@ public class HttpAppsService implements AppsService {
     private static final Logger log = LoggerFactory.getLogger(HttpAppsService.class);
     private final WebClient webClient;
     private final String baseUrl;
+    private final UpstreamBaseUrlContext upstreamBaseUrlContext;
     
     public HttpAppsService(
-        @Value("${mcp.apps.base-url:http://localhost:7070/Smart2Go}") String baseUrl
+        @Value("${mcp.apps.base-url:http://localhost:7070/Smart2Go}") String baseUrl,
+        UpstreamBaseUrlContext upstreamBaseUrlContext
     ) {
         this.baseUrl = BaseUrlUtil.normalize(baseUrl);
+        this.upstreamBaseUrlContext = upstreamBaseUrlContext;
         // Bump in-memory buffer in case uploadFile returns larger payloads (integrationRepositories etc.)
         var strategies = ExchangeStrategies.builder()
             .codecs(c -> c.defaultCodecs().maxInMemorySize(10 * 1024 * 1024))
@@ -47,11 +51,15 @@ public class HttpAppsService implements AppsService {
     
     @Override
     public AppsResponse saveApp(Map<String, Object> spec, String sessionToken) {
-        log.info("Calling saveApp API: {}", baseUrl + "/rest/Apps/saveApp");
+        String overrideBaseUrl = upstreamBaseUrlContext.getAppsBaseUrlOrNull();
+        String effectiveBaseUrl = overrideBaseUrl != null ? overrideBaseUrl : baseUrl;
+        WebClient client = webClient.mutate().baseUrl(effectiveBaseUrl).build();
+
+        log.info("Calling saveApp API: {}", effectiveBaseUrl + "/rest/Apps/saveApp");
         log.debug("App spec: {}, sessionToken: {}", spec, sessionToken != null ? "***" : "null");
         
         try {
-            var response = webClient.post()
+            var response = client.post()
                 .uri("/rest/Apps/saveApp")
                 .headers(h -> applySessionHeaders(h, sessionToken))
                 .contentType(MediaType.APPLICATION_JSON)
@@ -84,14 +92,18 @@ public class HttpAppsService implements AppsService {
 
     @Override
     public AppsResponse uploadImportFile(Path file, String sessionToken) {
-        log.info("Calling uploadFile API: {}", baseUrl + "/rest/importExport/uploadFile");
+        String overrideBaseUrl = upstreamBaseUrlContext.getAppsBaseUrlOrNull();
+        String effectiveBaseUrl = overrideBaseUrl != null ? overrideBaseUrl : baseUrl;
+        WebClient client = webClient.mutate().baseUrl(effectiveBaseUrl).build();
+
+        log.info("Calling uploadFile API: {}", effectiveBaseUrl + "/rest/importExport/uploadFile");
         log.debug("Uploading import file: {}, sessionToken: {}", file != null ? file.toString() : "null", sessionToken != null ? "***" : "null");
 
         try {
             MultipartBodyBuilder builder = new MultipartBodyBuilder();
             builder.part("file", new FileSystemResource(file.toFile()));
 
-            var response = webClient.post()
+            var response = client.post()
                 .uri("/rest/importExport/uploadFile")
                 .headers(h -> applySessionHeaders(h, sessionToken))
                 .contentType(MediaType.MULTIPART_FORM_DATA)
@@ -122,10 +134,14 @@ public class HttpAppsService implements AppsService {
 
     @Override
     public AppsResponse validateAppIdentifier(Map<String, Object> payload, String sessionToken) {
-        log.info("Calling validateAppIdentifier API: {}", baseUrl + "/rest/importExport/validateAppIdentifier");
+        String overrideBaseUrl = upstreamBaseUrlContext.getAppsBaseUrlOrNull();
+        String effectiveBaseUrl = overrideBaseUrl != null ? overrideBaseUrl : baseUrl;
+        WebClient client = webClient.mutate().baseUrl(effectiveBaseUrl).build();
+
+        log.info("Calling validateAppIdentifier API: {}", effectiveBaseUrl + "/rest/importExport/validateAppIdentifier");
 
         try {
-            var response = webClient.post()
+            var response = client.post()
                 .uri("/rest/importExport/validateAppIdentifier")
                 .headers(h -> applySessionHeaders(h, sessionToken))
                 .contentType(MediaType.APPLICATION_JSON)
@@ -156,10 +172,14 @@ public class HttpAppsService implements AppsService {
 
     @Override
     public AppsResponse importApp(Map<String, Object> payload, String sessionToken) {
-        log.info("Calling importApp API: {}", baseUrl + "/rest/importExport/importApp");
+        String overrideBaseUrl = upstreamBaseUrlContext.getAppsBaseUrlOrNull();
+        String effectiveBaseUrl = overrideBaseUrl != null ? overrideBaseUrl : baseUrl;
+        WebClient client = webClient.mutate().baseUrl(effectiveBaseUrl).build();
+
+        log.info("Calling importApp API: {}", effectiveBaseUrl + "/rest/importExport/importApp");
 
         try {
-            var response = webClient.post()
+            var response = client.post()
                 .uri("/rest/importExport/importApp")
                 .headers(h -> applySessionHeaders(h, sessionToken))
                 .contentType(MediaType.APPLICATION_JSON)

@@ -1,5 +1,6 @@
 package com.ntg.appsbroker.infrastructure.auth;
 
+import com.ntg.appsbroker.infrastructure.context.UpstreamBaseUrlContext;
 import com.ntg.appsbroker.ports.AuthService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -22,11 +23,17 @@ public class HttpAuthService implements AuthService {
     private static final Logger log = LoggerFactory.getLogger(HttpAuthService.class);
     private final WebClient webClient;
     private final String baseUrl;
+    private final boolean enabled;
+    private final UpstreamBaseUrlContext upstreamBaseUrlContext;
     
     public HttpAuthService(
-        @Value("${mcp.auth.base-url:http://localhost:7070/Smart2Go}") String baseUrl
+        @Value("${mcp.auth.base-url:http://localhost:7070/Smart2Go}") String baseUrl,
+        @Value("${mcp.auth.integration-enabled:false}") boolean enabled,
+        UpstreamBaseUrlContext upstreamBaseUrlContext
     ) {
         this.baseUrl = BaseUrlUtil.normalize(baseUrl);
+        this.enabled = enabled;
+        this.upstreamBaseUrlContext = upstreamBaseUrlContext;
         this.webClient = WebClient.builder()
             .baseUrl(this.baseUrl)
             .defaultHeader("SessionToken", "NTG")
@@ -36,6 +43,18 @@ public class HttpAuthService implements AuthService {
     
     @Override
     public LoginResult login(String username, String password, String companyname) {
+        if (!enabled) {
+            log.warn("Auth integration disabled, returning dummy token");
+            return new LoginResult(
+                "dummy-sessiontoken::" + companyname + "::" + username,
+                Map.of("UserSessionToken", "dummy-sessiontoken::" + companyname + "::" + username)
+            );
+        }
+        
+        String overrideBaseUrl = upstreamBaseUrlContext.getAuthBaseUrlOrNull();
+        String effectiveBaseUrl = overrideBaseUrl != null ? overrideBaseUrl : baseUrl;
+        WebClient client = webClient.mutate().baseUrl(effectiveBaseUrl).build();
+
         Map<String, Object> payload = new HashMap<>();
         Map<String, Object> loginUserInfo = new HashMap<>();
         loginUserInfo.put("loginUserName", username);
@@ -43,10 +62,10 @@ public class HttpAuthService implements AuthService {
         payload.put("LoginUserInfo", loginUserInfo);
         payload.put("Password", password);
         
-        log.info("Calling login API: {}", baseUrl + "/rest/MainFunciton/login");
+        log.info("Calling login API: {}", effectiveBaseUrl + "/rest/MainFunciton/login");
         
         try {
-            Map<String, Object> response = webClient.post()
+            Map<String, Object> response = client.post()
                 .uri("/rest/MainFunciton/login")
                 .bodyValue(payload)
                 .retrieve()

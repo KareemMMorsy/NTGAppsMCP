@@ -2,6 +2,7 @@ package com.ntg.appsbroker.infrastructure.mcp;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ntg.appsbroker.domain.McpRequestData;
+import com.ntg.appsbroker.infrastructure.context.UpstreamBaseUrlContext;
 import com.ntg.appsbroker.usecases.HandleMcpRequestUseCase;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -27,10 +28,12 @@ public class McpStdioServer implements CommandLineRunner {
     
     private final HandleMcpRequestUseCase useCase;
     private final ObjectMapper objectMapper;
+    private final UpstreamBaseUrlContext upstreamBaseUrlContext;
     
-    public McpStdioServer(HandleMcpRequestUseCase useCase, ObjectMapper objectMapper) {
+    public McpStdioServer(HandleMcpRequestUseCase useCase, ObjectMapper objectMapper, UpstreamBaseUrlContext upstreamBaseUrlContext) {
         this.useCase = useCase;
         this.objectMapper = objectMapper;
+        this.upstreamBaseUrlContext = upstreamBaseUrlContext;
     }
     
     @Override
@@ -125,15 +128,6 @@ public class McpStdioServer implements CommandLineRunner {
                 )
             ),
             Map.of(
-                "name", "server_info",
-                "description", "Returns sanitized server runtime env/config to debug deployments (never returns secrets).",
-                "inputSchema", Map.of(
-                    "type", "object",
-                    "properties", Map.of(),
-                    "additionalProperties", false
-                )
-            ),
-            Map.of(
                 "name", "create_app",
                 "description", "Create app via saveApp. You can provide only appName; other fields are optional and will be auto-filled.",
                 "inputSchema", Map.of(
@@ -187,14 +181,23 @@ public class McpStdioServer implements CommandLineRunner {
         }
         
         String clientId = (String) arguments.get("clientId");
-        
+
+        String authBaseUrl = (String) arguments.get("authBaseUrl");
+        String appsBaseUrl = (String) arguments.get("appsBaseUrl");
+
         var request = new McpRequestData(
             UUID.randomUUID(),
             name,
             arguments
         );
-        
-        var outcome = useCase.execute(request, clientId);
+
+        var outcome = (com.ntg.appsbroker.domain.McpOutcome) null;
+        try {
+            upstreamBaseUrlContext.set(authBaseUrl, appsBaseUrl);
+            outcome = useCase.execute(request, clientId);
+        } finally {
+            upstreamBaseUrlContext.clear();
+        }
         
         try {
             Map<String, Object> content;

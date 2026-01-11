@@ -20,19 +20,41 @@ $authToken = $env:MCP_HTTP_AUTH_TOKEN
 # Upstream Smart2Go SessionToken (UserSessionToken). This is what saveApp requires.
 $defaultSessionToken = $env:MCP_DEFAULT_SESSION_TOKEN
 
+# Upstream base URLs (these must be sent to the remote MCP server if you want it to use your local mcp.json values)
+$authBaseUrl = $env:MCP_AUTH_BASE_URL
+$appsBaseUrl = $env:MCP_APPS_BASE_URL
+
 while (($line = [Console]::In.ReadLine()) -ne $null) {
   if ([string]::IsNullOrWhiteSpace($line)) { continue }
 
   $obj = $null
   try { $obj = $line | ConvertFrom-Json } catch { $obj = $null }
 
-  # Inject sessionToken into create_app calls if it's not already provided
+  # Inject bridge-provided defaults into tool calls (so remote server can use local mcp.json env)
   try {
-    if ($obj -and $obj.method -eq 'tools/call' -and $obj.params -and $obj.params.name -eq 'create_app') {
+    if ($obj -and $obj.method -eq 'tools/call' -and $obj.params) {
+      if (-not $obj.params.arguments) {
+        $obj.params | Add-Member -NotePropertyName 'arguments' -NotePropertyValue @{} -Force
+      }
+
+      # Always inject upstream base URLs if provided (used by remote server per request)
+      if ($authBaseUrl -and $authBaseUrl.Trim().Length -gt 0) {
+        if (-not $obj.params.arguments.authBaseUrl -or ($obj.params.arguments.authBaseUrl.ToString().Trim().Length -eq 0)) {
+          $obj.params.arguments.authBaseUrl = $authBaseUrl
+        }
+      }
+      if ($appsBaseUrl -and $appsBaseUrl.Trim().Length -gt 0) {
+        if (-not $obj.params.arguments.appsBaseUrl -or ($obj.params.arguments.appsBaseUrl.ToString().Trim().Length -eq 0)) {
+          $obj.params.arguments.appsBaseUrl = $appsBaseUrl
+        }
+      }
+
+      # Inject sessionToken into create_app / import_app calls if it's not already provided
       if ($defaultSessionToken -and $defaultSessionToken.Trim().Length -gt 0) {
-        if (-not $obj.params.arguments) { $obj.params | Add-Member -NotePropertyName 'arguments' -NotePropertyValue @{} -Force }
-        if (-not $obj.params.arguments.sessionToken -or ($obj.params.arguments.sessionToken.ToString().Trim().Length -eq 0)) {
-          $obj.params.arguments.sessionToken = $defaultSessionToken
+        if ($obj.params.name -eq 'create_app' -or $obj.params.name -eq 'import_app') {
+          if (-not $obj.params.arguments.sessionToken -or ($obj.params.arguments.sessionToken.ToString().Trim().Length -eq 0)) {
+            $obj.params.arguments.sessionToken = $defaultSessionToken
+          }
         }
       }
     }
