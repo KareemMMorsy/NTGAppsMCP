@@ -3,7 +3,16 @@ $ProgressPreference = 'SilentlyContinue'
 
 # Remote MCP endpoint (HTTP JSON-RPC)
 $url = $env:MCP_REMOTE_MCP_URL
-if (-not $url -or $url.Trim().Length -eq 0) { $url = 'https://ntgapps.fly.dev/mcp' }
+if (-not $url -or $url.Trim().Length -eq 0) {
+  throw "Missing MCP_REMOTE_MCP_URL. Set it in your Cursor mcp.json under the server's env."
+}
+
+# Normalize: allow users to provide just host, or host + path, etc.
+$url = $url.Trim()
+if (-not ($url -match '^https?://')) { $url = "https://$url" }
+if (-not ($url -match '/mcp$')) {
+  if ($url.EndsWith('/')) { $url = "$url" + "mcp" } else { $url = "$url/mcp" }
+}
 
 # Bearer token used ONLY to authenticate to the MCP HTTP endpoint
 $authToken = $env:MCP_HTTP_AUTH_TOKEN
