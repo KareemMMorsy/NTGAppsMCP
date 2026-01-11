@@ -40,10 +40,12 @@ public class HttpAuthService implements AuthService {
     @Override
     public LoginResult login(String username, String password, String companyname) {
         if (!enabled) {
-            log.warn("Auth integration disabled, returning dummy token");
-            return new LoginResult(
-                "dummy-sessiontoken::" + companyname + "::" + username,
-                Map.of("UserSessionToken", "dummy-sessiontoken::" + companyname + "::" + username)
+            // Returning a dummy token causes confusing downstream errors (e.g., "Invalid License").
+            // Fail fast with a clear message so operators know to set the correct env vars on the server.
+            throw new IllegalStateException(
+                "Auth integration is disabled on this MCP server. " +
+                    "Set MCP_AUTH_INTEGRATION_ENABLED=true (and MCP_AUTH_BASE_URL) on the server, " +
+                    "or provide a valid Smart2Go sessionToken via MCP_DEFAULT_SESSION_TOKEN / tool argument."
             );
         }
         
