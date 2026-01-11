@@ -125,6 +125,15 @@ public class McpStdioServer implements CommandLineRunner {
                 )
             ),
             Map.of(
+                "name", "server_info",
+                "description", "Returns sanitized server runtime env/config to debug deployments (never returns secrets).",
+                "inputSchema", Map.of(
+                    "type", "object",
+                    "properties", Map.of(),
+                    "additionalProperties", false
+                )
+            ),
+            Map.of(
                 "name", "create_app",
                 "description", "Create app via saveApp. You can provide only appName; other fields are optional and will be auto-filled.",
                 "inputSchema", Map.of(

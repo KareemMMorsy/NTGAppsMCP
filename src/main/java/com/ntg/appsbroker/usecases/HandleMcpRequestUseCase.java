@@ -5,6 +5,7 @@ import com.ntg.appsbroker.ports.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.env.Environment;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
@@ -32,17 +33,20 @@ public class HandleMcpRequestUseCase {
     private final AppsService appsService;
     private final SessionStore sessionStore;
     private final String importAppsDir;
+    private final Environment env;
     
     public HandleMcpRequestUseCase(
         AuthService authService,
         AppsService appsService,
         SessionStore sessionStore,
-        @Value("${mcp.import.apps-dir:storage/import-apps}") String importAppsDir
+        @Value("${mcp.import.apps-dir:storage/import-apps}") String importAppsDir,
+        Environment env
     ) {
         this.authService = authService;
         this.appsService = appsService;
         this.sessionStore = sessionStore;
         this.importAppsDir = importAppsDir;
+        this.env = env;
     }
     
     public McpOutcome execute(McpRequestData request, String clientId) {
@@ -51,8 +55,9 @@ public class HandleMcpRequestUseCase {
         // Session enforcement for protected actions
         if (!request.action().equals("ping") && 
             !request.action().equals("login") &&
+            !request.action().equals("server_info") &&
             !request.action().equals("ai.intent")) {
-
+            
             // Allow callers to pass sessionToken explicitly (e.g., from Cursor env),
             // otherwise fall back to the stored/default token for the provided clientId.
             String providedToken = null;
@@ -65,25 +70,26 @@ public class HandleMcpRequestUseCase {
                 String effectiveClientId = (clientId == null || clientId.isBlank())
                     ? DEFAULT_CLIENT_ID
                     : clientId;
-
+            
                 String token = sessionStore.getToken(effectiveClientId);
-                if (token == null || token.isBlank()) {
-                    return new McpFailure(
-                        request.requestId(),
-                        new AppError("forbidden", "you must log in first", null)
-                    );
-                }
-
-                // Inject session token into parameters
-                Map<String, Object> params = new HashMap<>(request.parameters());
-                params.put("sessionToken", token);
-                request = new McpRequestData(request.requestId(), request.action(), params);
+            if (token == null || token.isBlank()) {
+                return new McpFailure(
+                    request.requestId(),
+                    new AppError("forbidden", "you must log in first", null)
+                );
+            }
+            
+            // Inject session token into parameters
+            Map<String, Object> params = new HashMap<>(request.parameters());
+            params.put("sessionToken", token);
+            request = new McpRequestData(request.requestId(), request.action(), params);
             }
         }
         
         return switch (request.action()) {
             case "ping" -> handlePing(request);
             case "login" -> handleLogin(request, clientId);
+            case "server_info" -> handleServerInfo(request);
             case "create_app" -> handleCreateApp(request);
             case "import_app" -> handleImportApp(request);
             default -> new McpFailure(
@@ -96,6 +102,61 @@ public class HandleMcpRequestUseCase {
     
     private McpOutcome handlePing(McpRequestData request) {
         return new McpSuccess(request.requestId(), Map.of("message", "pong"));
+    }
+
+    private McpOutcome handleServerInfo(McpRequestData request) {
+        Map<String, Object> props = Map.of(
+            "mcp.auth.base-url", env.getProperty("mcp.auth.base-url", ""),
+            "mcp.apps.base-url", env.getProperty("mcp.apps.base-url", ""),
+            "mcp.import.apps-dir", env.getProperty("mcp.import.apps-dir", ""),
+            "server.port", env.getProperty("server.port", ""),
+            "server.address", env.getProperty("server.address", "")
+        );
+
+        Map<String, Object> envVars = Map.of(
+            "PORT", safeEnv("PORT"),
+            "MCP_HTTP_SSE_MODE", safeEnv("MCP_HTTP_SSE_MODE"),
+            "MCP_STDIO_MODE", safeEnv("MCP_STDIO_MODE"),
+            "MCP_AUTH_BASE_URL", safeEnv("MCP_AUTH_BASE_URL"),
+            "MCP_APPS_BASE_URL", safeEnv("MCP_APPS_BASE_URL"),
+            "MCP_IMPORT_APPS_DIR", safeEnv("MCP_IMPORT_APPS_DIR"),
+            "RAILWAY_ENVIRONMENT", safeEnv("RAILWAY_ENVIRONMENT"),
+            "RAILWAY_GIT_COMMIT_SHA", safeEnv("RAILWAY_GIT_COMMIT_SHA"),
+            "RAILWAY_SERVICE_NAME", safeEnv("RAILWAY_SERVICE_NAME")
+        );
+
+        Map<String, Object> secrets = Map.of(
+            "MCP_HTTP_AUTH_TOKEN", secretPresence("MCP_HTTP_AUTH_TOKEN"),
+            "MCP_DEFAULT_SESSION_TOKEN", secretPresence("MCP_DEFAULT_SESSION_TOKEN")
+        );
+
+        Map<String, Object> sys = Map.of(
+            "java.version", System.getProperty("java.version", ""),
+            "os.name", System.getProperty("os.name", ""),
+            "os.arch", System.getProperty("os.arch", "")
+        );
+
+        return new McpSuccess(request.requestId(), Map.of(
+            "properties", props,
+            "env", envVars,
+            "secrets", secrets,
+            "system", sys
+        ));
+    }
+
+    private static Map<String, Object> secretPresence(String key) {
+        String v = System.getenv(key);
+        if (v == null || v.isBlank()) {
+            return Map.of("configured", false, "length", 0);
+        }
+        return Map.of("configured", true, "length", v.length());
+    }
+
+    private static String safeEnv(String key) {
+        // Safe values only (no tokens/passwords). If a value looks like a token, we still return it as-is only
+        // for explicitly whitelisted keys in handleServerInfo().
+        String v = System.getenv(key);
+        return v == null ? "" : v;
     }
     
     private McpOutcome handleLogin(McpRequestData request, String clientId) {
