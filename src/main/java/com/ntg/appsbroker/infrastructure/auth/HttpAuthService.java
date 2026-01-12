@@ -54,7 +54,7 @@ public class HttpAuthService implements AuthService {
         String overrideBaseUrl = upstreamBaseUrlContext.getAuthBaseUrlOrNull();
         String effectiveBaseUrl = overrideBaseUrl != null ? overrideBaseUrl : baseUrl;
         WebClient client = webClient.mutate().baseUrl(effectiveBaseUrl).build();
-
+        
         Map<String, Object> payload = new HashMap<>();
         Map<String, Object> loginUserInfo = new HashMap<>();
         loginUserInfo.put("loginUserName", username);

@@ -5,13 +5,13 @@ import com.ntg.appsbroker.ports.AppsService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.core.io.ByteArrayResource;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
 import org.springframework.web.reactive.function.client.WebClientResponseException;
 import org.springframework.web.reactive.function.client.WebClientRequestException;
+import org.springframework.core.io.ByteArrayResource;
 import org.springframework.web.reactive.function.BodyInserters;
 import org.springframework.web.reactive.function.client.ExchangeStrategies;
 import org.springframework.http.client.MultipartBodyBuilder;
@@ -19,7 +19,6 @@ import reactor.util.retry.Retry;
 import com.ntg.appsbroker.infrastructure.util.BaseUrlUtil;
 
 import java.time.Duration;
-import java.time.OffsetDateTime;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
@@ -30,6 +29,8 @@ import java.util.Map;
 @Service
 public class HttpAppsService implements AppsService {
     private static final Logger log = LoggerFactory.getLogger(HttpAppsService.class);
+    private static final long DEFAULT_TIME_OFFSET_MS = 7200000L; // 2 hours in milliseconds
+    
     private final WebClient webClient;
     private final String baseUrl;
     private final UpstreamBaseUrlContext upstreamBaseUrlContext;
@@ -56,7 +57,7 @@ public class HttpAppsService implements AppsService {
         String overrideBaseUrl = upstreamBaseUrlContext.getAppsBaseUrlOrNull();
         String effectiveBaseUrl = overrideBaseUrl != null ? overrideBaseUrl : baseUrl;
         WebClient client = webClient.mutate().baseUrl(effectiveBaseUrl).build();
-
+        
         log.info("Calling saveApp API: {}", effectiveBaseUrl + "/rest/Apps/saveApp");
         log.debug("App spec: {}, sessionToken: {}", spec, sessionToken != null ? "***" : "null");
         
@@ -145,7 +146,7 @@ public class HttpAppsService implements AppsService {
 
             var response = client.post()
                 .uri("/rest/importExport/uploadFile")
-                .headers(h -> applyUploadHeaders(h, sessionToken))
+                .headers(h -> applyUploadHeadersWithoutTimeOffset(h, sessionToken))
                 .contentType(MediaType.MULTIPART_FORM_DATA)
                 .body(BodyInserters.fromMultipartData(builder.build()))
                 .retrieve()
@@ -222,7 +223,7 @@ public class HttpAppsService implements AppsService {
         try {
             var response = client.post()
                 .uri("/rest/importExport/importApp")
-                .headers(h -> applySessionHeaders(h, sessionToken))
+                .headers(h -> applyJsonHeadersWithTimeOffset(h, sessionToken))
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue(payload)
                 .retrieve()
@@ -257,20 +258,24 @@ public class HttpAppsService implements AppsService {
     }
 
     /**
-     * Match the Python upload script headers:
+     * Upload headers without TimeOffset:
      * - SessionToken (we also send sessiontoken + X-Session-Token)
-     * - TimeOffset (ms)
      * - ngsw-bypass=true
      */
-    private static void applyUploadHeaders(HttpHeaders headers, String sessionToken) {
+    private static void applyUploadHeadersWithoutTimeOffset(HttpHeaders headers, String sessionToken) {
         applySessionHeaders(headers, sessionToken);
-        headers.set("TimeOffset", String.valueOf(timeOffsetMs()));
         headers.set("ngsw-bypass", "true");
     }
 
-    private static long timeOffsetMs() {
-        // Python: datetime.now().astimezone().utcoffset().total_seconds() * 1000
-        return (long) OffsetDateTime.now().getOffset().getTotalSeconds() * 1000L;
+    /**
+     * JSON headers with TimeOffset:
+     * - SessionToken (we also send sessiontoken + X-Session-Token)
+     * - TimeOffset (default: 7200000 ms = 2 hours)
+     */
+    private static void applyJsonHeadersWithTimeOffset(HttpHeaders headers, String sessionToken) {
+        applySessionHeaders(headers, sessionToken);
+        headers.set("TimeOffset", String.valueOf(DEFAULT_TIME_OFFSET_MS));
     }
+
 }
 

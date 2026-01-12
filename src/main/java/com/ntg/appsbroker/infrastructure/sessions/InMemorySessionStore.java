@@ -50,7 +50,7 @@ public class InMemorySessionStore implements SessionStore {
             log.info("Default session token is configured (no default clientId). It will be used as a fallback when needed.");
         }
     }
-
+    
     @Override
     public void setToken(String clientId, String token) {
         if (clientId == null || clientId.isBlank()) {
@@ -68,7 +68,7 @@ public class InMemorySessionStore implements SessionStore {
         String token = sessions.get(clientId);
         if (token != null && !token.isBlank()) {
             log.debug("Session retrieved for clientId={}: found", clientId);
-            return token;
+        return token;
         }
 
         // Fallback: allow operation without explicit login when a default token exists

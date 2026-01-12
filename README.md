@@ -125,25 +125,6 @@ Add to `~/.cursor/mcp.json` (or `C:\Users\YourUsername\.cursor\mcp.json` on Wind
 
 **Note**: Update the `-jar` path to your actual JAR location.
 
-## Deployment env vs Cursor env (important)
-
-`mcp.json` **env** is applied to the **local process Cursor launches** (your bridge script or local JAR). It is **not** automatically sent to your deployed service on Railway/Fly/etc.
-
-- **Deployed server env**: must be set in the hosting platform (Railway Variables, Fly secrets, etc.). This includes `MCP_APPS_INTEGRATION_ENABLED`, `MCP_APPS_BASE_URL`, `MCP_AUTH_*`, `MCP_DEFAULT_SESSION_TOKEN`, etc.
-- **Client/bridge env** (local only): includes `MCP_REMOTE_MCP_URL` and (if you choose) `MCP_HTTP_AUTH_TOKEN` to authenticate to the remote MCP endpoint.
-
-### Sync Railway variables from `mcp.json`
-
-If you want “one place” to manage these values, you can **sync a safe subset** from `mcp.json` into Railway using:
-
-```powershell
-./scripts/sync-railway-env.ps1 -ServerName NTGApps
-```
-
-Prereqs:
-- Install Railway CLI and login: `railway login`
-- Link the current folder to your Railway project once: `railway link`
-
 ### 3. Restart Cursor
 
 After configuring, restart Cursor completely. The MCP server will be automatically launched.
