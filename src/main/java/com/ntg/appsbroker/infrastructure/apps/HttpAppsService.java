@@ -258,13 +258,31 @@ public class HttpAppsService implements AppsService {
     }
 
     /**
-     * Upload headers without TimeOffset:
+     * Upload headers without TimeOffset (matching browser behavior):
      * - SessionToken (we also send sessiontoken + X-Session-Token)
      * - ngsw-bypass=true
+     * - User-Agent (Chrome browser)
+     * - Accept
+     * - sec-ch-ua-platform
+     * - sec-ch-ua
+     * - sec-ch-ua-mobile
+     * - Sec-Fetch-Site
+     * - Sec-Fetch-Mode
+     * - Sec-Fetch-Dest
      */
     private static void applyUploadHeadersWithoutTimeOffset(HttpHeaders headers, String sessionToken) {
         applySessionHeaders(headers, sessionToken);
         headers.set("ngsw-bypass", "true");
+        
+        // Browser-like headers for compatibility
+        headers.set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36");
+        headers.set("Accept", "application/json, text/plain, */*");
+        headers.set("sec-ch-ua-platform", "\"Windows\"");
+        headers.set("sec-ch-ua", "\"Google Chrome\";v=\"143\", \"Chromium\";v=\"143\", \"Not A(Brand\";v=\"24\"");
+        headers.set("sec-ch-ua-mobile", "?0");
+        headers.set("Sec-Fetch-Site", "same-origin");
+        headers.set("Sec-Fetch-Mode", "cors");
+        headers.set("Sec-Fetch-Dest", "empty");
     }
 
     /**
